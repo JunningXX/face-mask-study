@@ -11,6 +11,7 @@ library(lme4)
 library(lmerTest)
 library(nlme)
 library(performance)
+library(tidyverse)
 
 ## Import data
 raw_data_third <- read.csv("Experiment_3.csv")
@@ -44,9 +45,9 @@ clean_data_third$whether_mask_got_20 <- factor(clean_data_third$whether_mask_got
 clean_data_third$Amount <- factor(clean_data_third$Amount, 
                                   levels = c("£10", "£20"))
 
-clean_data_third$mask_perception <-  factor(clean_data_third$mask_perception,levels = c("Only themselves", "Mostly themselves", 
-                                                                                        "Equally themselves and others", "Mostly others",
-                                                                                        "Only others"))
+clean_data_third$mask_perception <-  factor(clean_data_third$mask_perception,levels = c("Equally themselves and others",
+                                                                                        "Only themselves", "Mostly themselves", 
+                                                                                        "Only others", "Mostly others"))
 clean_data_third$mask_wearing <- factor(clean_data_third$mask_wearing, 
                                   levels = c("Yes", "No"))
 
@@ -103,7 +104,7 @@ table <- clean_data_third %>%
 
 ## Running logistic regression with 1 predictor -- Sex 
 set_sum_contrasts()
-r1 <-  glm(mask_got_20 ~ Sex, family = "binomial", data = clean_data_third)
+r1 <-  glm(mask_got_20 ~ 1, family = "binomial", data = clean_data_third)
 summary(r1)
 
 # contr.sum(2)
@@ -213,7 +214,7 @@ tab_model(r3, p.style = "numeric_stars", show.aic = T, auto.label = TRUE)
 
 exp(coef(r3))
 
-# set_default_contrasts()
+set_default_contrasts()
 set_sum_contrasts()
 r4 <-  glm(mask_got_20 ~ Sex + Amount + mask_perception , family = "binomial", data = clean_data_third)
 summary(r4)
@@ -251,115 +252,71 @@ em1 <-  emmeans(r4, "mask_wearing") %>% pairs(adjust = "holm")
 # Results are averaged over the levels of: Sex, Amount 
 # Results are given on the log odds ratio (not the response) scale. 
 
-set_sum_contrasts()
-
-clean_data_third$mask_perception_num <- as.numeric(clean_data_third$mask_perception)
-
-
-r4 <-  glm(mask_got_20 ~ Sex + Amount + mask_perception_num , family = "binomial",
-           data = clean_data_third)
-tab_model(r4, p.style = "numeric_stars", show.aic = T, auto.label = TRUE)
-
-
 ## Adding the rating difference as a predictor to the binary choice
 ## Creating a new column for the rating difference
-clean_data_third <- clean_data_third %>% mutate(trust_diff = trustworthy_p1 - trustworthy_p2, 
-                                                attract_diff = attractive_p1 - attractive_p2)
+cleandata_third_M <- clean_data_third %>% filter(grepl("M", Pic.Label.1)) %>% 
+  mutate(trust_diff = trustworthy_p1 - trustworthy_p2)
+cleandata_third_U <- clean_data_third %>% filter(grepl("U", Pic.Label.1)) %>% 
+  mutate(trust_diff = trustworthy_p2 - trustworthy_p1)
 
-small_data <- clean_data_third %>% select(c(10:11, 13,15, 41, 43, 45, 46, 18,20)) %>% 
-  mutate(mask_condition_1 = case_when(
-    endsWith(Pic.Label.1, "U") ~ "unmask",
-    endsWith(Pic.Label.1, "M") ~ "mask"
-  )) %>% 
-  mutate(mask_condition_2 = case_when(
-    endsWith(Pic.Label.2, "U") ~ "unmask",
-    endsWith(Pic.Label.2, "M") ~ "mask"
-  ))
+clean_data_third <- rbind(cleandata_third_M,cleandata_third_U)
 
-
-aggregate(x = small_data$trustworthy_p1,                # Specify data column
-          by = list(
-            small_data$mask_condition_1,
-            small_data$whether_mask_got_20),              # Specify group indicator
-          FUN = mean) 
-
-aggregate(x = small_data$trustworthy_p2,                # Specify data column
-          by = list(
-            small_data$mask_condition_2,
-            small_data$whether_mask_got_20),              # Specify group indicator
-          FUN = sd) 
-
-ggplot(data = small_data, aes(x = trustworthy_p1)) +
-  geom_density(fill = "lightblue",kernel = "gaussian") +
-  facet_wrap(mask_condition_1~whether_mask_got_20) 
-
-ggplot(data = small_data, aes(x = trustworthy_p2)) +
-  geom_density(fill = "lightblue", kernel = "gaussian") +
-  facet_wrap(mask_condition_2~whether_mask_got_20)
-
-
-p1_masked_trustworthiness_when_mask_got_20 <- small_data %>% 
-  filter(mask_condition_1 == "mask" & whether_mask_got_20 == "Yes")
-p1_masked_trustworthiness_when_mask_notgot_20 <- small_data %>% 
-  filter(mask_condition_1 == "mask" & whether_mask_got_20 == "No")
-
-t.test(p1_masked_trustworthiness_when_mask_got_20$trustworthy_p1,
-       p1_masked_trustworthiness_when_mask_notgot_20$trustworthy_p1)
-
-cohensD(p1_masked_trustworthiness_when_mask_got_20$trustworthy_p1,
-        p1_masked_trustworthiness_when_mask_notgot_20$trustworthy_p1)
-
-
-p1_unmasked_trustworthiness_when_unmask_got_20 <- small_data %>% 
-  filter(mask_condition_1 == "unmask" & whether_mask_got_20 == "No")
-p1_unmasked_trustworthiness_when_unmask_notgot_20 <- small_data %>% 
-  filter(mask_condition_1 == "unmask" & whether_mask_got_20 == "Yes")
-
-t.test(p1_unmasked_trustworthiness_when_unmask_got_20$trustworthy_p1,
-       p1_unmasked_trustworthiness_when_unmask_notgot_20$trustworthy_p1)
-
-cohensD(p1_unmasked_trustworthiness_when_unmask_got_20$trustworthy_p1,
-        p1_unmasked_trustworthiness_when_unmask_notgot_20$trustworthy_p1)
-
-p2_masked_trustworthiness_when_mask_got_20 <- small_data %>% 
-  filter(mask_condition_2 == "mask" & whether_mask_got_20 == "Yes")
-p2_masked_trustworthiness_when_mask_notgot_20 <- small_data %>% 
-  filter(mask_condition_2 == "mask" & whether_mask_got_20 == "No")
-
-t.test(p2_masked_trustworthiness_when_mask_got_20$trustworthy_p2,
-       p2_masked_trustworthiness_when_mask_notgot_20$trustworthy_p2)
-cohensD(p2_masked_trustworthiness_when_mask_got_20$trustworthy_p2,
-        p2_masked_trustworthiness_when_mask_notgot_20$trustworthy_p2)
-
-
-masked_trustworthiness_when_mask_got_20 <- c(p1_masked_trustworthiness_when_mask_got_20$trustworthy_p1,
-                                                 p2_masked_trustworthiness_when_mask_got_20$trustworthy_p2)
-c(p1_masked_trustworthiness_when_mask_got_20$trustworthy_p2,
-  p2_masked_trustworthiness_when_mask_got_20$trustworthy_p1)
-
-t.test(c(p1_masked_trustworthiness_when_mask_got_20$trustworthy_p1,
-         p2_masked_trustworthiness_when_mask_got_20$trustworthy_p2),
-       c(p1_masked_trustworthiness_when_mask_got_20$trustworthy_p2,
-         p2_masked_trustworthiness_when_mask_got_20$trustworthy_p1))
-
-
-p2_unmasked_trustworthiness_when_unmask_got_20 <- small_data %>% 
-  filter(mask_condition_2 == "unmask" & whether_mask_got_20 == "No")
-p2_unmasked_trustworthiness_when_unmask_notgot_20 <- small_data %>% 
-  filter(mask_condition_2 == "unmask" & whether_mask_got_20 == "Yes")
-
-t.test(p2_unmasked_trustworthiness_when_unmask_got_20$trustworthy_p2,
-       p2_unmasked_trustworthiness_when_unmask_notgot_20$trustworthy_p2)
-cohensD(p2_unmasked_trustworthiness_when_unmask_got_20$trustworthy_p2,
-        p2_unmasked_trustworthiness_when_unmask_notgot_20$trustworthy_p2)
-
-r5 <-  glm(mask_got_20 ~ Sex + Amount + mask_wearing + trust_diff, family = "binomial", data = clean_data_third)
+set_sum_contrasts()
+r5 <-  glm(mask_got_20 ~ Sex + Amount + mask_wearing + trust_diff , family = "binomial", 
+           data = clean_data_third)
 summary(r5)
-confint(r5)
-
 tab_model(r5, p.style = "numeric_stars", show.aic = T, auto.label = TRUE)
 
 exp(coef(r5))
+
+
+#New 3 level dummy variable
+clean_data_third <- clean_data_third %>% 
+  mutate(protection = ifelse(mask_perception == "Only themselves" | 
+                               mask_perception == "Mostly themselves", "themselves",
+                      ifelse(mask_perception == "Equally themselves and others", 
+                                     "Equally themselves and others", "others")))
+
+clean_data_third$protection <- as.factor(clean_data_third$protection)
+
+## mannually contrast coding
+
+clean_data_third <- clean_data_third %>% 
+  mutate(Sex_contrast = ifelse(Sex == "Male", 1, -1),
+         Amount_contrast = ifelse(Amount == "£10", 1, -1),
+         mask_wearing_contrast = ifelse(mask_wearing == "Yes", 1, -1))
+
+set_default_contrasts()
+r6 <-  glm(mask_got_20 ~ Sex_contrast + Amount_contrast + mask_wearing_contrast + 
+             protection, family = "binomial", 
+           data = clean_data_third)
+tab_model(r6, p.style = "numeric_stars", show.aic = TRUE, auto.label = TRUE, 
+          show.stat = TRUE, show.se = TRUE)
+
+
+## ANOVAs 
+
+aov1 <- aov_ez("ID", "trustworthy_score", data = data_long_third_trust, between = "whether_mask_got_20",
+               within = "mask_condition")
+aov1
+
+afex_plot(aov1, x = "mask_condition", trace = "whether_mask_got_20", error = "none",
+          mapping = c("linetype", "shape", "fill"),
+          data_geom = ggplot2::geom_violin, 
+          data_arg = list(width = 0.5))
+
+# Follow-up test 
+em1 <- emmeans(aov1, c("whether_mask_got_20","mask_condition"), model = "multivariate")
+
+con1 <-  
+  list(Yes_M_v_U = c(0,1,0,-1),
+       No_M_v_U = c(1,0,-1,0),
+       Mask_Y_v_N = c(1,-1,0,0),
+       Unmask_Y_v_N = c(0,0,-1,1))
+
+c1 <- contrast(em1, con1, adjust = "holm") 
+
+confint(c1)
 
 ## Section 2 
 ## first both attractiveness and trustworthiness ratings need to become a long table -- using pivot_long
@@ -405,8 +362,6 @@ distribution_plot(data_long_third, "attractive_score", "mask_condition") +
 attr <- aov_ez("X", "attractive_score", data = data_long_third, between = "Sex",
        within = "mask_condition")
 attr
-
-tab_model(attr, p.style = "numeric_stars", show.aic = T, auto.label = TRUE)
 # Anova Table (Type 3 tests)
 
 # Response: attractive_score
@@ -428,7 +383,7 @@ trust <- clean_data_third %>%
   pivot_longer(c(10:11), names_to = "trustworthy", values_to = "trustworthy_score",
                values_ptypes = list(att_score=character()))
 
-data_long_third_trust <- cbind(test02, trust[47:48])
+data_long_third_trust <- cbind(test02, trust[45:46])
 
 ## rearrange variable's type
 data_long_third_trust <- data_long_third_trust %>% rename(ID = X)
@@ -469,7 +424,7 @@ trust_em <- emmeans(trust, "mask_condition")
 trust_con <- list(
   mask_vs_unmask = c(-1,1)
 )
-contrast(trust_em, trust_con, adjust = "holm")
+x1 <- contrast(trust_em, trust_con, adjust = "holm")
 
 # contrast       estimate   SE  df t.ratio p.value
 # mask_vs_unmask    -6.88 1.44 169 -4.780  <.0001 
@@ -540,9 +495,9 @@ d2_new <- d2[-c(2, 4, 6, 8), ]
 d2_new <- d2_new %>% mutate(Sex = ifelse(Sex == "Male", "Male participant", "Female participant"))
 
 ggplot(data = d2_new, aes(x = `Still wearing mask`, y = Percentage,
-           label = paste0(round(Percentage*100), "%"))) +
+           label = paste0(round(Percentage*100), "%"), fill = `Still wearing mask`)) +
   geom_col(position = position_stack(), color = "black") +
-  geom_text(position = position_stack(vjust = .5)) +
+  geom_text(position = position_stack(vjust = 1.02), size = 5) +
   scale_y_continuous(labels = scales::percent_format())  +
   facet_wrap(~Sex) + 
   ylab("£20 to masked (%)") + 
@@ -550,7 +505,7 @@ ggplot(data = d2_new, aes(x = `Still wearing mask`, y = Percentage,
   labs(
        fill = 
 " ") +
-  scale_fill_manual(values=c("Grey40")) +
+  scale_fill_manual(values = c("gray30", "gray70")) +
   theme(axis.text.x = element_text(size=10), 
         axis.title = element_text(size = 12),
         plot.title = element_text(size = 14, 
@@ -571,7 +526,8 @@ ggplot(data = d2_new, aes(x = `Still wearing mask`, y = Percentage,
         axis.text.y.left=element_text(colour="black"), 
         plot.caption = element_text(hjust = 0),
         axis.text = element_text(size = 14),
-        axis.title=element_text(size=14,face="bold"))
+        axis.title=element_text(size=14,face="bold"),
+        legend.position = "none")
 
 
 clean_data_third$whether_mask_got_20 <- 
@@ -623,21 +579,21 @@ d1$Mask <-
 
 d1_new <- d1[-c(2, 4, 6, 8), ] 
 
-d1_new <- d1_new %>% mutate(Sex = ifelse(Sex == "Male", "Male participant", "Female participant"))
+d1_new <- d1_new %>% mutate(Sex = ifelse(Sex == "Male", "Male participants", "Female participants"))
 
 data.table::setnames(d1_new,'Amount','Allocating')
 
-ggplot(data = d1_new, aes(x = Allocating, y = Percentage,
+ggplot(data = d1_new, aes(x = Allocating, y = Percentage, fill = Allocating,
            label = paste0(round(Percentage*100), "%"))) +
   geom_col(position = position_stack(), color = "black") +
-  geom_text(position = position_stack(vjust = .5)) +
+  geom_text(position = position_stack(vjust = 1.015), size = 5) +
   scale_y_continuous(labels = scales::percent_format()) + 
   geom_hline(yintercept=0.5, linetype="dashed", 
            color = "red", size=1) +
   facet_wrap(~Sex) +
-  scale_fill_manual(values=c("Grey40")) +
+  scale_fill_manual(values=c("grey30", 'grey80')) +
   ylab("£20 to masked (%)") + 
-  xlab("Amount required to be allocated") +
+  xlab("Allocation frame") +
   labs(
     fill = 
       " ") +
@@ -671,31 +627,24 @@ clean_data_third %>%
   summarise(mean=mean(trustworthy_p2)) 
 
 
-d3 <- data_long_third_trust %>% group_by(mask_condition, whether_mask_got_20) %>% 
+d3 <- data_long_third_trust %>% group_by(mask_condition, Sex) %>% 
   summarise(m = mean(trustworthy_score),
             se = sd(trustworthy_score) / sqrt(length(trustworthy_score))) %>% 
-  mutate(Mask = ifelse(mask_condition == "unmask", "Unmasked", "Masked"),
-         whether_mask_got_20 = ifelse(whether_mask_got_20 == "Yes", "Got £20", "Did not get £20"))
-
-d3$whether_got_20 <- c("Did not get £20", "Got £20", "Got £20", "Did not get £20")
+  mutate(Mask = ifelse(mask_condition == "unmask", "Unmasked", "Masked"), 
+         Gender = ifelse(Sex == "Female", "Female participants", "Male participants")) 
 
 data.table::setnames(d3,'Whether counterpart got £20','Whether counterpart masked')
 
-ggplot(data = d3, aes(x = whether_got_20, y = m,
-                      label = round(m))) +
+ggplot(data = d3, aes(x = Mask, y = m, label = round(m), fill = Mask)) +
   geom_col(position = position_stack(), color = "black") +
-  geom_errorbar(aes(ymin = m - se,
-                    ymax = m + se),
-                color = "#22292F",
-                width = .1) +
-  coord_cartesian(ylim=c(20,70))  +
-  facet_wrap(~Mask) +
-  scale_fill_manual(values=c("Grey40")) +
+  geom_errorbar(aes(ymin = m - se, ymax = m + se), width = .1) +
+  coord_cartesian(ylim = c(20, 70)) +
+  facet_wrap(~Gender) +
+  scale_fill_manual(values = c("gray30", "gray70")) +
   ylab("Average trustworthiness rating") + 
-  xlab("Whether counterpart got £20") +
+  xlab("Mask manipulation") +
   labs(
-    fill = 
-      " ") +
+    caption = "Error bars indicate standard errors of the mean") +
   theme(axis.text.x = element_text(size=10), 
         axis.title = element_text(size = 12),
         plot.title = element_text(size = 14, 
@@ -715,4 +664,5 @@ ggplot(data = d3, aes(x = whether_got_20, y = m,
         axis.text.y.left=element_text(colour="black"),
         plot.caption = element_text(hjust = 0),
         axis.text = element_text(size = 14),
-        axis.title=element_text(size=14,face="bold"))
+        axis.title=element_text(size=14,face="bold"),
+        legend.position = "none")
